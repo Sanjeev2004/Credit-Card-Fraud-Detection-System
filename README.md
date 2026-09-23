@@ -108,7 +108,10 @@ Open [`notebooks/train_fraud_detection.ipynb`](notebooks/train_fraud_detection.i
 in Colab or your VS Code Colab kernel. It embeds the project training code and
 does not need your local source files on the remote runtime.
 
-1. Install packages and configure the run. Default: `DEVICE="cuda"`, three models.
+1. Install packages and configure the run. Default: `DEVICE="auto"`, three models.
+   XGBoost uses CUDA when available and otherwise continues on CPU. To require a
+   GPU, select a GPU runtime and set `DEVICE="cuda"`. If the resolved device changes
+   when resuming, use a new `RUN_NAME`.
 2. Load embedded code, download/locate the dataset, verify CUDA and prepare splits.
 3. Run the separate Logistic Regression, XGBoost and LightGBM cells.
 4. Run evaluation/export once, then package and download the ZIP.

@@ -33,7 +33,7 @@ def main():
     training.add_argument("--min-precision", type=float, default=0.80)
     training.add_argument("--quick", action="store_true", help="Use fewer trees, not fewer data rows")
     training.add_argument("--mode", choices=["fast", "grid"], default="fast")
-    training.add_argument("--device", choices=["cpu", "cuda"], default="cpu")
+    training.add_argument("--device", choices=["auto", "cpu", "cuda"], default="cpu")
     training.add_argument("--models", nargs="+", default=None,
                           choices=["logistic_regression", "xgboost", "lightgbm"])
     training.add_argument("--max-trees", type=int, default=300)

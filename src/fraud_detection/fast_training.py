@@ -19,6 +19,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 from threadpoolctl import threadpool_limits
 from xgboost import XGBClassifier
+from xgboost.core import XGBoostError
 
 from fraud_detection.data import FEATURES, TARGET, load_dataset, split_dataset
 from fraud_detection.training import choose_threshold, evaluate
@@ -41,15 +42,26 @@ def dump_model(path, value):
 
 
 def check_device(device, seed=42):
-    if device not in {"cpu", "cuda"}:
-        raise ValueError("Device must be cpu or cuda.")
-    if device == "cuda":
+    if device not in {"auto", "cpu", "cuda"}:
+        raise ValueError("Device must be auto, cpu or cuda.")
+    if device != "cpu":
         probe = XGBClassifier(n_estimators=1, max_depth=1, tree_method="hist", device="cuda")
-        probe.fit(np.random.default_rng(seed).normal(size=(32, 4)), np.tile([0, 1], 16))
+        try:
+            probe.fit(np.random.default_rng(seed).normal(size=(32, 4)), np.tile([0, 1], 16))
+        except XGBoostError:
+            if device == "cuda":
+                raise
+            print("XGBoost CUDA probe failed; continuing training on CPU.", flush=True)
+            return "cpu"
         actual = json.loads(probe.get_booster().save_config())["learner"]["generic_param"]["device"]
         if not actual.startswith("cuda"):
-            raise RuntimeError("XGBoost fell back to CPU. Select a GPU runtime or device='cpu'.")
+            if device == "cuda":
+                raise RuntimeError("XGBoost fell back to CPU. Select a GPU runtime or device='cpu'.")
+            print("XGBoost CUDA unavailable; continuing training on CPU.", flush=True)
+            return "cpu"
         print(f"XGBoost GPU verified: {actual}", flush=True)
+        return "cuda"
+    return "cpu"
 
 
 def prepare_run(data, output, seed=42, jobs=2, min_precision=0.8,
@@ -62,8 +74,12 @@ def prepare_run(data, output, seed=42, jobs=2, min_precision=0.8,
         raise ValueError(f"Choose unique models from {FAST_MODELS}.")
     if max_trees < 1 or patience < 1:
         raise ValueError("max_trees and patience must be positive.")
-    if device not in {"cpu", "cuda"}:
-        raise ValueError("Device must be cpu or cuda.")
+    if device not in {"auto", "cpu", "cuda"}:
+        raise ValueError("Device must be auto, cpu or cuda.")
+    if "xgboost" in models:
+        device = check_device(device, seed)
+    elif device == "auto":
+        device = "cpu"
     start = time.perf_counter()
     data, output = Path(data), Path(output)
     with data.open("rb") as stream:
@@ -88,8 +104,6 @@ def prepare_run(data, output, seed=42, jobs=2, min_precision=0.8,
             raise ValueError("Cannot resume: data, code, settings or versions changed. Use a new directory.")
     else:
         manifest = {"version": datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ"), "config": config}
-    if "xgboost" in models:
-        check_device(device, seed)
     print("Loading, validating and deduplicating dataset...", flush=True)
     frame, summary = load_dataset(data)
     training, validation, test = split_dataset(frame, seed)

@@ -20,7 +20,7 @@ def build():
     markdown("""# Fast credit-card fraud training — one model per cell
 
 The old notebook performed **52 fits** (48 CV fits + 4 refits). This notebook defaults
-to **3 fits**, no grid search, and early stopping for boosting. XGBoost uses the T4;
+to **3 fits**, no grid search, and early stopping for boosting. XGBoost uses CUDA when available;
 Logistic Regression and LightGBM use CPU. The full dataset is retained.
 
 Each model has its own cell and checkpoint. Run top to bottom; use `RESUME = True`
@@ -48,7 +48,7 @@ the ZIP before the runtime is deleted. Windows paths are not available on Colab.
     code('''import os
 from pathlib import Path
 
-DEVICE = "cuda"  # Colab T4; use "cpu" locally
+DEVICE = "auto"  # Use CUDA when available; otherwise continue on CPU
 MODELS = ("logistic_regression", "xgboost", "lightgbm")
 SEED = 42
 JOBS = min(2, os.cpu_count() or 1)
@@ -103,6 +103,9 @@ interactively; do not store tokens in this notebook.
 Exact-feature duplicates are removed before stratified 70/15/15 train/validation/test
 splitting. Boosters fit on 85% of **training**, using its remaining 15% for early stopping.
 Validation selects model and threshold; test is used only in step 8.
+`DEVICE = "auto"` probes XGBoost CUDA support and falls back to CPU when unavailable.
+To require GPU training, select a GPU runtime and set `DEVICE = "cuda"`.
+If the resolved device differs from a previous run, choose a new `RUN_NAME`.
 """)
     code('''if DATA_SOURCE == "kaggle":
     import kagglehub
@@ -193,5 +196,6 @@ These are historical random-split results, not real payment deployment evidence.
 
 if __name__ == "__main__":
     target = ROOT / "notebooks" / "train_fraud_detection.ipynb"
-    target.write_text(json.dumps(build(), indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
+    target.write_text(json.dumps(build(), indent=1, ensure_ascii=False) + "\n",
+                      encoding="utf-8", newline="\n")
     print(target)
