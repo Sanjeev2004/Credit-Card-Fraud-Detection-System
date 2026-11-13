@@ -5,7 +5,11 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "credit-card-fraud-detection"
 version = "0.1.0"
-description = "Reproducible four-model fraud benchmark and batch/API inference"
+description = "FraudLens: reproducible multi-model credit-card fraud detection with FastAPI scoring and an interactive dashboard"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Sanjeev Kumar" }]
 requires-python = ">=3.11"
 dependencies = [
   "numpy>=1.26,<3", "pandas>=2.2,<3", "scikit-learn>=1.6,<2",

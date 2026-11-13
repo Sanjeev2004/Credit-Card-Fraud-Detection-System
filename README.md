@@ -6,6 +6,8 @@
 ![FastAPI](https://img.shields.io/badge/API-FastAPI-009688?logo=fastapi&logoColor=white)
 ![Models](https://img.shields.io/badge/Models-XGBoost%20%7C%20LightGBM%20%7C%20Logistic%20Regression-557C55)
 ![Interface](https://img.shields.io/badge/Dashboard-FraudLens-91AD68)
+[![CI](https://github.com/Sanjeev2004/Credit-Card-Fraud-Detection-System/actions/workflows/ci.yml/badge.svg)](https://github.com/Sanjeev2004/Credit-Card-Fraud-Detection-System/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 FraudLens is an end-to-end machine learning project that trains and compares fraud
 detection models, exports the best validation performer, and serves predictions
@@ -13,6 +15,22 @@ through a **FastAPI backend and an interactive dashboard**. It focuses on the
 metrics that matter for rare fraud: precision, recall, and average precision.
 
 [Quick start](#quick-start) · [Results](#measured-results) · [Training](#train-your-own-model) · [Colab notebook](#train-in-google-colab) · [API](#api-and-batch-predictions) · [Troubleshooting](#troubleshooting)
+
+## Project strengths
+
+- **Leakage-aware pipeline:** exact-feature deduplication before splitting, early-stopping data held out of validation/test, and model/threshold selection on validation only.
+- **Imbalance-first metrics:** reports average precision, precision, and recall instead of chasing headline accuracy on a ~0.17% fraud rate.
+- **Multi-model, one export:** Logistic Regression, XGBoost, and LightGBM in one run; the validation AP winner is packaged for serving.
+- **Product surface included:** FastAPI health/metrics/predict endpoints plus an interactive FraudLens dashboard—not just a notebook cell.
+- **Reproducible CI:** GitHub Actions runs lint and pytest with fixtures/mocks; no dataset download or GPU required.
+
+## Comparison
+
+| Approach | What you get | Gap |
+| --- | --- | --- |
+| **FraudLens (this repo)** | Dedup → stratified split → 3 models → validation AP selection → held-out test → FastAPI + dashboard + batch CLI | Full path from data hygiene to serving |
+| **Naive accuracy-only baseline** | Always predict legitimate → ~**99.83%** accuracy | **0** fraud detected; useless for review queues |
+| **Single-model notebook** | One booster fit and a PR curve plot | No leakage controls, no model comparison, no API/dashboard, hard to resume or ship |
 
 ## Highlights
 
@@ -25,6 +43,25 @@ metrics that matter for rare fraud: precision, recall, and average precision.
 - **Reproducible outputs:** dataset fingerprint, dependency versions, metrics, plots, and reload-verified model artifacts.
 
 ## How it works
+
+```mermaid
+flowchart TD
+  A[Transaction CSV] --> B[Schema validation]
+  B --> C[Exact-feature deduplication]
+  C --> D[Stratified split 70 / 15 / 15]
+  D --> E[Logistic Regression]
+  D --> F[XGBoost]
+  D --> G[LightGBM]
+  E --> H[Validation AP + threshold selection]
+  F --> H
+  G --> H
+  H --> I[Held-out test evaluation]
+  I --> J[Export model.joblib + report]
+  J --> K[FastAPI + FraudLens dashboard]
+  J --> L[CLI batch predict → predictions/scores.csv]
+```
+
+ASCII overview of the same pipeline:
 
 ```text
 Transaction CSV
@@ -54,27 +91,41 @@ FastAPI → FraudLens dashboard / Batch CSV predictions
 
 - Python **3.11 or newer**
 - Git
-- Windows PowerShell for the commands below
+- Bash (Linux/macOS) or PowerShell (Windows)
 - Internet access for first-time dependency installation and dataset download
 
 A GPU is optional. The local launcher uses CPU training by default.
 
 ### 1. Clone the repository
 
-```powershell
+```bash
 git clone https://github.com/Sanjeev2004/Credit-Card-Fraud-Detection-System.git
 cd Credit-Card-Fraud-Detection-System
 ```
 
 ### 2. Start the project
 
+**Linux / macOS**
+
+```bash
+chmod +x run.sh
+./run.sh
+```
+
+**Windows (PowerShell)**
+
 ```powershell
 .\run.ps1
 ```
 
+Optional Make targets (Linux/macOS): `make install`, `make test`, `make run`.
+
 On a fresh setup, the launcher creates a virtual environment, installs dependencies,
 downloads the dataset if needed, trains the models, and starts the application.
 If `artifacts/model.joblib` already exists, it loads that model directly.
+
+Environment overrides for `run.sh`: `MODEL_PATH=...` and `PORT=8001`.
+For PowerShell: `.\run.ps1 -ModelPath artifacts/my-run/model.joblib -Port 8001`.
 
 ### 3. Open the application
 
@@ -87,10 +138,23 @@ If `artifacts/model.joblib` already exists, it loads that model directly.
 Keep the terminal running while using the app. Press **Ctrl+C** to stop the server.
 
 <details>
-<summary><strong>Manual setup or PowerShell script restrictions</strong></summary>
+<summary><strong>Manual setup</strong></summary>
 
 Run these commands from the repository root. Create the virtual environment only
 if `.venv` does not already exist, and download the dataset only if the CSV is missing.
+
+**Linux / macOS**
+
+```bash
+python3 -m venv .venv
+.venv/bin/python -m pip install -e ".[dev]"
+.venv/bin/python -m fraud_detection.cli download --output data/creditcard.csv
+.venv/bin/python -m fraud_detection.cli train --output artifacts/manual-run --jobs 2
+export FRAUD_MODEL_PATH=artifacts/manual-run/model.joblib
+.venv/bin/python -m uvicorn fraud_detection.api:app --host 127.0.0.1 --port 8000
+```
+
+**Windows (PowerShell)**
 
 ```powershell
 python -m venv .venv
@@ -102,8 +166,7 @@ $env:FRAUD_MODEL_PATH = "artifacts/manual-run/model.joblib"
 ```
 
 For another training run, choose a new output directory or use `--resume` with
-identical settings. On macOS/Linux, use `.venv/bin/python` and your shell's
-environment-variable syntax instead.
+identical settings.
 
 </details>
 
@@ -180,26 +243,26 @@ the anonymized PCA features from raw payment details.
 
 ### Default three-model run
 
-```powershell
-.\.venv\Scripts\python.exe -m fraud_detection.cli train --data data/creditcard.csv --output artifacts/my-run --jobs 2
+```bash
+.venv/bin/python -m fraud_detection.cli train --data data/creditcard.csv --output artifacts/my-run --jobs 2
 ```
 
 ### Automatically choose GPU or CPU
 
-```powershell
-.\.venv\Scripts\python.exe -m fraud_detection.cli train --device auto --output artifacts/auto-run
+```bash
+.venv/bin/python -m fraud_detection.cli train --device auto --output artifacts/auto-run
 ```
 
 ### Train only XGBoost
 
-```powershell
-.\.venv\Scripts\python.exe -m fraud_detection.cli train --models xgboost --output artifacts/xgb-only
+```bash
+.venv/bin/python -m fraud_detection.cli train --models xgboost --output artifacts/xgb-only
 ```
 
 ### Resume an interrupted run
 
-```powershell
-.\.venv\Scripts\python.exe -m fraud_detection.cli train --data data/creditcard.csv --output artifacts/my-run --jobs 2 --resume
+```bash
+.venv/bin/python -m fraud_detection.cli train --data data/creditcard.csv --output artifacts/my-run --jobs 2 --resume
 ```
 
 Completed models load from checkpoints. An unfinished model restarts its fit.
@@ -217,14 +280,15 @@ Resuming requires the same dataset, code, dependencies, and configuration.
 
 To serve your new model:
 
-```powershell
-.\run.ps1 -ModelPath artifacts/my-run/model.joblib
+```bash
+MODEL_PATH=artifacts/my-run/model.joblib ./run.sh
+# or: .\run.ps1 -ModelPath artifacts/my-run/model.joblib
 ```
 
 An optional CPU-only four-model grid search also includes Random Forest:
 
-```powershell
-.\.venv\Scripts\python.exe -m fraud_detection.cli train --mode grid --output artifacts/grid --jobs 2
+```bash
+.venv/bin/python -m fraud_detection.cli train --mode grid --output artifacts/grid --jobs 2
 ```
 
 This performs **52 fits**, compared with three in the default workflow.
@@ -244,9 +308,9 @@ source and provides a separate cell for each model.
 5. Download the serving ZIP and extract it into a new local folder, such as `artifacts/colab-fast`.
 6. Install the recorded model dependencies and start the dashboard:
 
-```powershell
-.\.venv\Scripts\python.exe -m pip install -r artifacts/colab-fast/requirements-model.txt
-.\run.ps1 -ModelPath artifacts/colab-fast/model.joblib
+```bash
+.venv/bin/python -m pip install -r artifacts/colab-fast/requirements-model.txt
+MODEL_PATH=artifacts/colab-fast/model.joblib ./run.sh
 ```
 
 Set `SAVE_TO_DRIVE = True` to preserve checkpoints across Colab runtime deletion.
@@ -287,7 +351,20 @@ fraud probabilities. Actual CUDA/T4 execution has not been verified in this work
 
 ### Score a sample through the API
 
-With the server running, execute in another PowerShell terminal:
+With the server running:
+
+```bash
+curl -s http://127.0.0.1:8000/examples | python3 -c "
+import json,sys,urllib.request
+ex=json.load(sys.stdin)['examples'][0]['transaction']
+req=urllib.request.Request('http://127.0.0.1:8000/predict',
+    data=json.dumps({'transactions':[ex]}).encode(),
+    headers={'Content-Type':'application/json'})
+print(urllib.request.urlopen(req).read().decode())
+"
+```
+
+PowerShell alternative:
 
 ```powershell
 $examples = Invoke-RestMethod "http://127.0.0.1:8000/examples"
@@ -301,8 +378,15 @@ and each transaction's `fraud_score` and `is_fraud` decision.
 
 ### Score a full CSV
 
-```powershell
-.\.venv\Scripts\python.exe -m fraud_detection.cli predict --model artifacts/model.joblib --data data/creditcard.csv --output predictions/scores.csv --chunk-size 10000
+`predictions/scores.csv` is **generated locally** via the CLI and is **not** stored in Git
+(see [`predictions/README.md`](predictions/README.md)).
+
+```bash
+.venv/bin/python -m fraud_detection.cli predict \
+  --model artifacts/model.joblib \
+  --data data/creditcard.csv \
+  --output predictions/scores.csv \
+  --chunk-size 10000
 ```
 
 The CLI processes bounded-memory chunks, preserves row order, and publishes the
@@ -325,9 +409,13 @@ output only after all chunks succeed. Output columns are `row_number`,
 ├── scripts/                      # Notebook generation and load testing
 ├── tests/                        # Pipeline, notebook, and API tests
 ├── docs/                         # Benchmark methodology
+├── predictions/                  # Local CLI scores (gitignored CSVs)
 ├── data/                         # Local dataset (generated/downloaded)
 ├── artifacts/                    # Local models and reports (generated)
-├── run.ps1                       # Windows launcher
+├── run.sh / run.ps1              # Linux/macOS and Windows launchers
+├── Makefile                      # install / lint / test / run helpers
+├── .github/workflows/ci.yml      # Lint + pytest on push/PR
+├── LICENSE                       # MIT
 ├── pyproject.toml                # Dependencies and project configuration
 └── Dockerfile                    # Container build definition
 ```
@@ -347,11 +435,16 @@ output only after all chunks succeed. Output columns are `row_number`,
 
 ## Testing and development
 
-```powershell
-.\.venv\Scripts\python.exe -m pip install -e ".[dev]"
-.\.venv\Scripts\python.exe -m pytest -q
-.\.venv\Scripts\python.exe -m ruff check src scripts tests
+```bash
+.venv/bin/python -m pip install -e ".[dev]"
+.venv/bin/python -m pytest -q
+.venv/bin/python -m ruff check src scripts tests
 ```
+
+Or: `make install && make test && make lint`.
+
+CI runs the same lint and pytest steps on Python 3.11 without downloading the
+dataset or requiring a GPU.
 
 **Latest verified suite: 44 tests passed.** Coverage includes training and
 resumption, split separation, device selection, standalone notebook execution,
@@ -360,8 +453,8 @@ also completed successfully.
 
 After changing the embedded training modules, regenerate the notebook:
 
-```powershell
-.\.venv\Scripts\python.exe scripts/build_notebook.py
+```bash
+.venv/bin/python scripts/build_notebook.py
 ```
 
 ## Troubleshooting
@@ -373,12 +466,12 @@ After changing the embedded training modules, regenerate the notebook:
 | **“Cannot resume … changed”** | Choose a new `RUN_NAME` or output directory; the existing checkpoint configuration differs. |
 | **“Output directory must be empty”** | Use a new output directory, or `--resume` for an unchanged interrupted run. |
 | **Dataset download requires authentication** | Run `kagglehub.login()` interactively or place `creditcard.csv` in `data/`. |
-| **Model file is missing** | Train a model or pass an existing artifact to `run.ps1 -ModelPath ...`. |
-| **Port 8000 is in use** | Start with `.\run.ps1 -Port 8001` and open `http://127.0.0.1:8001`. |
+| **Model file is missing** | Train a model or pass an existing artifact (`MODEL_PATH=... ./run.sh` or `.\run.ps1 -ModelPath ...`). |
+| **Port 8000 is in use** | `PORT=8001 ./run.sh` or `.\run.ps1 -Port 8001`, then open `http://127.0.0.1:8001`. |
 | **Prediction input is rejected** | Include exactly `Time`, `V1`–`V28`, and `Amount` as finite numbers; omit `Class` from API requests. |
 
 ---
 
 Built with **Python · scikit-learn · XGBoost · LightGBM · FastAPI · pandas · NumPy · Matplotlib**.
 
-**Author:** [Sanjeev](https://github.com/Sanjeev2004)
+**Author:** [Sanjeev Kumar](https://github.com/Sanjeev2004) · License: [MIT](LICENSE)
