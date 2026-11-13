@@ -14,7 +14,7 @@ detection models, exports the best validation performer, and serves predictions
 through a **FastAPI backend and an interactive dashboard**. It focuses on the
 metrics that matter for rare fraud: precision, recall, and average precision.
 
-[Quick start](#quick-start) · [Results](#measured-results) · [Training](#train-your-own-model) · [Colab notebook](#train-in-google-colab) · [API](#api-and-batch-predictions) · [Troubleshooting](#troubleshooting)
+[Quick start](#quick-start) · [Interview pitch](#problem-this-project-solves) · [Results](#measured-results) · [Training](#train-your-own-model) · [Colab notebook](#train-in-google-colab) · [API](#api-and-batch-predictions) · [Troubleshooting](#troubleshooting)
 
 ## Project strengths
 
@@ -23,6 +23,30 @@ metrics that matter for rare fraud: precision, recall, and average precision.
 - **Multi-model, one export:** Logistic Regression, XGBoost, and LightGBM in one run; the validation AP winner is packaged for serving.
 - **Product surface included:** FastAPI health/metrics/predict endpoints plus an interactive FraudLens dashboard—not just a notebook cell.
 - **Reproducible CI:** GitHub Actions runs lint and pytest with fixtures/mocks; no dataset download or GPU required.
+
+## Problem this project solves
+
+### Interview pitch
+
+**Business problem.** Fraud is rare but costly. Banks and payment teams cannot manually review every transaction, and the cost of a miss (real fraud that slips through) differs from the cost of a false positive (a legitimate payment flagged for review). The goal is not “classify every row perfectly”; it is to **rank and flag** the riskiest transactions so a finite review queue catches more fraud with fewer wasted alerts.
+
+**ML challenge.** With fraud at roughly **0.17%** of transactions, a model that always predicts “legitimate” scores ~**99.83% accuracy** while detecting **zero** fraud. Accuracy is a trap. Useful systems optimize **precision, recall, and average precision (AP)** under a leakage-aware train/validation/test design.
+
+**What I built.** FraudLens trains and compares **Logistic Regression, XGBoost, and LightGBM**, selects the winner by **validation AP**, tunes the decision threshold on validation only, evaluates on a held-out test set, and serves scores through a **FastAPI + interactive dashboard** plus a **batch CLI** for large CSVs.
+
+**Honest impact.** On the recorded full-dataset CPU run (Sep 18, 2026), the selected **XGBoost** model reached test **AP ≈ 0.7735**, fraud **precision ≈ 75.34%**, and fraud **recall ≈ 77.46%** (55 of 71 test fraud cases detected, 18 false alerts). That is evidence for **prioritizing review queues**, not a claim of production payment performance or calibrated probabilities.
+
+### 30–45 second verbal pitch
+
+> I built FraudLens to show end-to-end fraud detection that respects class imbalance. Accuracy looks great if you never catch fraud, so I compare Logistic Regression, XGBoost, and LightGBM, pick the model by validation average precision, and freeze thresholds before touching the test set. Deduplication happens before the split so identical rows cannot leak across folds. The result is a FastAPI service and dashboard for interactive scoring, plus a CLI for batch CSV predictions. On my measured run, XGBoost hit about 0.77 average precision with roughly 75% precision and 77% recall—useful for ranking a review queue, not as a claim that the model is production-ready.
+
+### Interview talking points
+
+1. **Why not accuracy?** Always-legitimate achieves ~99.83% accuracy and finds no fraud; AP / precision / recall match the review-queue objective.
+2. **Validation vs test for selection?** Model and threshold choices use validation only; the test set is a one-shot report so we do not tune on the scorecard.
+3. **Why dedupe before the split?** Exact-feature duplicates that land in both train and test inflate metrics; removing them first keeps evaluation honest.
+4. **Why set the threshold on validation?** The decision boundary is part of model selection; freezing it before test avoids threshold shopping on held-out labels.
+5. **What would you improve next?** Live deploy, SHAP-style explanations for reviewers, and probability calibration for score interpretability.
 
 ## Comparison
 
