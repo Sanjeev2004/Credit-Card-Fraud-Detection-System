@@ -38,7 +38,11 @@ async def lifespan(app: FastAPI):
     del app.state.artifact
 
 
-app = FastAPI(title="Fraud Detection API", lifespan=lifespan)
+app = FastAPI(
+    title="FraudLens",
+    description="Credit-card fraud detection API and interactive dashboard.",
+    lifespan=lifespan,
+)
 
 
 @app.get("/", response_class=HTMLResponse)
